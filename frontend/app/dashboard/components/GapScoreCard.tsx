@@ -1,7 +1,7 @@
 "use client";
 
-import { RadialBarChart, RadialBar, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Cell } from "recharts";
 import type { Priority } from "../page";
+
 
 interface Props {
   priority: Priority;
