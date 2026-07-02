@@ -10,6 +10,7 @@ import GapScoreCard from "./components/GapScoreCard";
 import WeightSliders from "./components/WeightSliders";
 import ThemeDrilldown from "./components/ThemeDrilldown";
 import HotspotMap from "./components/HotspotMap";
+import LiveFeed from "./components/LiveFeed";
 
 export interface Priority {
   priority_id: string;
@@ -303,6 +304,11 @@ export default function DashboardPage() {
             </div>
           )}
         </main>
+
+        {/* Live Feed Sidebar (Right) */}
+        <aside className="w-80 border-l border-slate-800 hidden xl:block bg-surface-900 overflow-hidden shrink-0">
+          <LiveFeed />
+        </aside>
       </div>
     </div>
   );

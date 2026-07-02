@@ -62,5 +62,16 @@ async def twilio_webhook(
     insert_submission(row)
     background_tasks.add_task(_process_submission_background, submission_id, row, None)
 
-    # Twilio expects a TwiML response (or empty 200)
-    return ""
+    # Return a localized TwiML response to close the loop with the citizen
+    twiml_response = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Message>
+        Thank you for contacting Jan Awaaz. Your issue has been logged and is being reviewed by the MP's office.
+        
+        जन आवाज़ से संपर्क करने के लिए धन्यवाद। आपकी समस्या दर्ज कर ली गई है और सांसद कार्यालय द्वारा इसकी समीक्षा की जा रही है।
+        
+        జన్ ఆవాజ్‌ని సంప్రదించినందుకు ధన్యవాదాలు. మీ సమస్య నమోదు చేయబడింది మరియు MP కార్యాలయం ద్వారా సమీక్షించబడుతోంది.
+    </Message>
+</Response>"""
+
+    return Response(content=twiml_response, media_type="application/xml")
