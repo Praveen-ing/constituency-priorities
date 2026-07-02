@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { RefreshCw, Sliders, Map, List, Activity, LogOut } from "lucide-react";
-import { auth } from "../../lib/firebase";
-import { signOut } from "firebase/auth";
+import { auth, signOut } from "../../lib/firebase";
 import { useRouter } from "next/navigation";
 import PriorityList from "./components/PriorityList";
 import GapScoreCard from "./components/GapScoreCard";
