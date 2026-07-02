@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── CSS Custom Properties ───────────────────────────────────────────── */
+:root {
+  --gradient-brand: linear-gradient(135deg, #1e88ed 0%, #1671da 50%, #059669 100%);
+  --gradient-saffron: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  --gradient-glass: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+  --shadow-glow-blue: 0 0 40px rgba(30, 136, 237, 0.15);
+  --shadow-glow-saffron: 0 0 40px rgba(249, 115, 22, 0.15);
+}
+
+/* ── Base ────────────────────────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: #0a0f1a;
+  color: #f1f5f9;
+}
+
+/* ── Glass card utility ──────────────────────────────────────────────── */
+.glass-card {
+  background: var(--gradient-glass);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 16px;
+}
+
+/* ── Priority badge colors ───────────────────────────────────────────── */
+.badge-high {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+.badge-medium {
+  background: rgba(249, 115, 22, 0.15);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  color: #fdba74;
+}
+
+.badge-low {
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #86efac;
+}
+
+/* ── Shimmer loading skeleton ────────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg, #162035 25%, #1e2d47 50%, #162035 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0f1829;
+}
+::-webkit-scrollbar-thumb {
+  background: #263857;
+  border-radius: 3px;
+}
+
+/* ── Focus rings ─────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid #34a6f8;
+  outline-offset: 2px;
+}
+
+/* ── Gradient text ───────────────────────────────────────────────────── */
+.gradient-text {
+  background: var(--gradient-brand);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-saffron {
+  background: var(--gradient-saffron);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Map container ───────────────────────────────────────────────────── */
+#constituency-map {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+}
