@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { RefreshCw, Sliders, Map, List, Download, Activity } from "lucide-react";
+import { RefreshCw, Sliders, Map, List, Activity, LogOut } from "lucide-react";
+import { auth } from "../../lib/firebase";
+import { signOut } from "firebase/auth";
+import { useRouter } from "next/navigation";
 import PriorityList from "./components/PriorityList";
 import GapScoreCard from "./components/GapScoreCard";
 import WeightSliders from "./components/WeightSliders";
@@ -109,6 +112,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"list" | "map">("list");
   const [showWeights, setShowWeights] = useState(false);
+  const router = useRouter();
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
   const fetchPriorities = async () => {
@@ -170,6 +174,15 @@ export default function DashboardPage() {
 
   const totalSubmissions = priorities.reduce((s, p) => s + p.submission_count, 0);
 
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth);
+      router.push("/login");
+    } catch (err) {
+      console.error("Sign out error", err);
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* ── Top nav ── */}
@@ -177,6 +190,14 @@ export default function DashboardPage() {
         <Link href="/" className="text-xl font-bold gradient-text">Jan Awaaz</Link>
         <div className="flex items-center gap-3">
           <span className="text-xs text-slate-500 hidden md:block">MP Dashboard · Hyderabad Constituency</span>
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-400 hover:text-white hover:bg-white/5 transition-colors"
+            title="Sign Out"
+          >
+            <LogOut className="w-4 h-4" />
+          </button>
+          <div className="w-px h-5 bg-slate-800 mx-1" />
           <button
             id="toggle-weights-btn"
             onClick={() => setShowWeights((v) => !v)}

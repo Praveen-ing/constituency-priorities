@@ -9,7 +9,7 @@
 
 ## 0. Why Track 1 Wins (and Why the Others Don't)
 
-Scoring weights: Deployability & Scalability (**25%**) · AI/Technical Execution (**25%**) · Problem-Solution Fit (**20%**) · Inclusivity & Accessibility (**15%**) · Impact Potential (**10%**) · Presentation (**5%**)
+Scoring weights: Deployability & Scalability (**25%**) · AI/Technical Execution (**25%**) · Problem-Solution Fit (**20%**) · Inclusivity & Accessibility (**15%**) · Impact Poteokntial (**10%**) · Presentation (**5%**)
 
 **50% of your score is "does the AI do real, non-decorative work" + "could this run in a real constituency in weeks."**
 Track 1 is the ONLY track where you satisfy both without faking your core data:
