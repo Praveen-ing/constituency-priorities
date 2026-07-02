@@ -8,6 +8,8 @@ import { useRouter } from "next/navigation";
 import PriorityList from "./components/PriorityList";
 import GapScoreCard from "./components/GapScoreCard";
 import WeightSliders from "./components/WeightSliders";
+import ThemeDrilldown from "./components/ThemeDrilldown";
+import HotspotMap from "./components/HotspotMap";
 
 export interface Priority {
   priority_id: string;
@@ -289,19 +291,11 @@ export default function DashboardPage() {
               {/* Gap Score breakdown */}
               <GapScoreCard priority={selected} />
 
-              {/* Submissions */}
-              <div className="glass-card p-5 mt-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="font-semibold text-white">Citizen Submissions</h3>
-                  <span className="text-sm text-slate-400">{selected.submission_count} total</span>
-                </div>
-                <Link
-                  href={`/dashboard/submissions?theme=${selected.theme_id}&ward=${selected.ward_id}`}
-                  className="text-brand-400 text-sm hover:underline"
-                >
-                  View all {selected.submission_count} submissions →
-                </Link>
-              </div>
+              {/* Hotspot Map */}
+              <HotspotMap priority={selected} />
+
+              {/* Submissions Drilldown */}
+              <ThemeDrilldown priority={selected} />
             </div>
           ) : (
             <div className="flex items-center justify-center h-full text-slate-600">
