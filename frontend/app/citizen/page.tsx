@@ -9,8 +9,9 @@ import {
 import VoiceRecorder from "./components/VoiceRecorder";
 import LowLiteracyFlow from "./components/LowLiteracyFlow";
 import LanguageSelector from "./components/LanguageSelector";
+import SubmissionPipeline from "./components/SubmissionPipeline";
 
-type Mode = "choose" | "voice" | "photo" | "text" | "icon" | "done";
+type Mode = "choose" | "voice" | "photo" | "text" | "icon" | "pipeline" | "done";
 
 const MODES = [
   { id: "voice", label: "Voice", labelHi: "आवाज़", labelTe: "వాయిస్", icon: Mic, color: "from-brand-600 to-brand-700", desc: "Speak your concern" },
@@ -39,7 +40,7 @@ export default function CitizenPage() {
       });
       const data = await res.json();
       setSubmittedId(data.id);
-      setMode("done");
+      setMode("pipeline");
     } catch {
       alert("Submission failed. Please try again.");
     } finally {
@@ -87,7 +88,11 @@ export default function CitizenPage() {
         <LanguageSelector lang={lang} onLangChange={setLang} />
       </header>
 
-      <div className="flex-1 max-w-2xl mx-auto w-full px-6 py-8">
+      <div className="flex-1 max-w-2xl mx-auto w-full px-6 py-8 flex flex-col justify-center">
+        {mode === "pipeline" && (
+          <SubmissionPipeline onComplete={() => setMode("done")} />
+        )}
+
         {mode === "choose" && (
           <div className="animate-fade-in">
             <p className="text-slate-400 text-center mb-8 text-lg">
@@ -123,7 +128,7 @@ export default function CitizenPage() {
           <VoiceRecorder
             lang={lang}
             onBack={() => setMode("choose")}
-            onSubmitted={(id) => { setSubmittedId(id); setMode("done"); }}
+            onSubmitted={(id) => { setSubmittedId(id); setMode("pipeline"); }}
           />
         )}
 
@@ -131,7 +136,7 @@ export default function CitizenPage() {
           <LowLiteracyFlow
             lang={lang}
             onBack={() => setMode("choose")}
-            onSubmitted={(id) => { setSubmittedId(id); setMode("done"); }}
+            onSubmitted={(id) => { setSubmittedId(id); setMode("pipeline"); }}
           />
         )}
 

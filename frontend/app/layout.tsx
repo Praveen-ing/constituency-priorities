@@ -18,6 +18,8 @@ export const metadata: Metadata = {
     description: "Citizens speak. AI listens. MPs act.",
     type: "website",
   },
+  manifest: "/manifest.json",
+  themeColor: "#3b82f6",
 };
 
 export default function RootLayout({

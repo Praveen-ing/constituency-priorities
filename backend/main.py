@@ -9,7 +9,7 @@ import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import submissions, themes, priorities, webhooks
+from app.api import submissions, themes, priorities, webhooks, chat
 from app.config import get_settings
 
 # ── Logging ──────────────────────────────────────────────────────────────────
@@ -43,6 +43,7 @@ app.include_router(submissions.router)
 app.include_router(themes.router)
 app.include_router(priorities.router)
 app.include_router(webhooks.router)
+app.include_router(chat.router)
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

@@ -11,6 +11,8 @@ import WeightSliders from "./components/WeightSliders";
 import ThemeDrilldown from "./components/ThemeDrilldown";
 import HotspotMap from "./components/HotspotMap";
 import LiveFeed from "./components/LiveFeed";
+import DataChat from "./components/DataChat";
+import ExportReport from "./components/ExportReport";
 
 export interface Priority {
   priority_id: string;
@@ -208,6 +210,9 @@ export default function DashboardPage() {
             <Sliders className="w-4 h-4" />
             <span className="hidden sm:inline">Weights</span>
           </button>
+          
+          <ExportReport priorities={priorities} />
+
           <button
             id="recompute-btn"
             onClick={recompute}
@@ -310,6 +315,9 @@ export default function DashboardPage() {
           <LiveFeed />
         </aside>
       </div>
+
+      {/* Ask the Data Chat Bot */}
+      <DataChat priorities={priorities} />
     </div>
   );
 }
