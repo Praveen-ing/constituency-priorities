@@ -14,32 +14,52 @@ interface FeedItem {
 
 export default function LiveFeed() {
   const [items, setItems] = useState<FeedItem[]>([]);
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-  // Simulate real-time incoming submissions
   useEffect(() => {
-    // Initial load
-    setItems([
-      { id: "1", type: "audio", content: "Voice note received (0:14s)", ward: "Old City", time: "2 min ago", isNew: false },
-      { id: "2", type: "text", content: "\"Drainage pipe is broken near...\"", ward: "Gachibowli", time: "15 min ago", isNew: false },
-      { id: "3", type: "image", content: "Photo of pothole uploaded", ward: "Rajapuram", time: "1 hr ago", isNew: false },
-    ]);
+    let isMounted = true;
+    let previousIds = new Set<string>();
 
-    // Simulate new submission coming in after 10 seconds to show judges the "live" aspect
-    const timer1 = setTimeout(() => {
-      setItems(prev => [
-        { id: "4", type: "text", content: "\"No drinking water supply since...\"", ward: "Banjara Hills", time: "Just now", isNew: true },
-        ...prev
-      ]);
-      
-      // Remove the "isNew" flag after animation completes
-      setTimeout(() => {
-        setItems(current => current.map(item => item.id === "4" ? { ...item, isNew: false } : item));
-      }, 3000);
-      
-    }, 10000);
+    const fetchSubmissions = async () => {
+      try {
+        const res = await fetch(`${apiBase}/submissions?limit=10`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!isMounted) return;
 
-    return () => clearTimeout(timer1);
-  }, []);
+        const newItems: FeedItem[] = data.map((sub: any) => ({
+          id: sub.id,
+          type: sub.media_type || "text",
+          content: sub.content || "Submission received",
+          ward: sub.ward_id ? sub.ward_id.replace("_", " ") : "Unknown Ward",
+          time: new Date(sub.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isNew: !previousIds.has(sub.id) && previousIds.size > 0, // Flag as new if it wasn't in previous fetch
+        }));
+
+        setItems(newItems);
+        previousIds = new Set(newItems.map(item => item.id));
+
+        // Clear the 'isNew' flag after animation
+        if (newItems.some(i => i.isNew)) {
+          setTimeout(() => {
+            if (isMounted) {
+              setItems(current => current.map(item => ({ ...item, isNew: false })));
+            }
+          }, 3000);
+        }
+      } catch (err) {
+        console.error("Failed to fetch live feed", err);
+      }
+    };
+
+    fetchSubmissions();
+    const interval = setInterval(fetchSubmissions, 10000);
+    
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [apiBase]);
 
   return (
     <div className="glass-card flex flex-col h-[500px]">

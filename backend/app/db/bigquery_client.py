@@ -133,13 +133,14 @@ def insert_submission(row: dict[str, Any]) -> str:
 
     # SQLite fallback
     conn = _get_sqlite_conn()
+    content_val = row.get("content") or row.get("translated_text") or row.get("original_content") or ""
     conn.execute(
         """INSERT OR REPLACE INTO submissions
            (id, media_type, content, original_language, source, theme, ward_id,
             urgency_score, sentiment_score, is_anonymous, created_at)
            VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
         (
-            row.get("id"), row.get("media_type", "text"), row.get("content", ""),
+            row.get("id"), row.get("media_type", "text"), content_val,
             row.get("original_language", "en"), row.get("source", "web"),
             row.get("theme"), row.get("ward_id"),
             row.get("urgency_score", 0.5), row.get("sentiment_score", 0.0),
@@ -212,8 +213,9 @@ def get_priorities(constituency: str | None = None, limit: int = 20) -> list[dic
     # SQLite fallback
     conn = _get_sqlite_conn()
     rows = conn.execute("""
-        SELECT p.*, p.theme_id as theme_label
+        SELECT p.*, COALESCE(t.label, p.theme_id) as theme_label
         FROM priorities p
+        LEFT JOIN themes t ON p.theme_id = t.theme_id
         ORDER BY p.gap_score DESC LIMIT ?
     """, (limit,)).fetchall()
     conn.close()

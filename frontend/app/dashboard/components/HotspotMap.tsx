@@ -147,17 +147,67 @@ export default function HotspotMap({ priority }: Props) {
   }, [priority, map, heatmapLayer]);
 
   if (error === "Mock Mode") {
+    // Ward positions for the SVG mock — each corresponds to a real ward in the DB
+    const wardPositions: Record<string, { x: number; y: number; label: string }> = {
+      rajapuram:   { x: 80,  y: 90,  label: "Rajapuram" },
+      old_city:    { x: 180, y: 150, label: "Old City" },
+      green_valley:{ x: 280, y: 80,  label: "Green Valley" },
+      riverside:   { x: 310, y: 170, label: "Riverside" },
+      new_market:  { x: 150, y: 220, label: "New Market" },
+      gachibowli:  { x: 260, y: 230, label: "Gachibowli" },
+    };
+    const activeWard = priority ? wardPositions[priority.ward_id] : null;
+    const urgencyColor = priority && priority.gap_score > 0.7 ? "#ef4444" : priority && priority.gap_score > 0.5 ? "#f97316" : "#34d399";
+
     return (
-      <div className="w-full h-[400px] bg-surface-800 rounded-xl flex flex-col items-center justify-center border border-slate-700/50 p-6 text-center mt-6">
-        <MapPin className="w-12 h-12 text-slate-600 mb-4" />
-        <h3 className="text-white font-semibold mb-2">Google Maps Integration Ready</h3>
-        <p className="text-sm text-slate-400 mb-4 max-w-sm">
-          Add your Google Maps API Key to <code className="text-brand-400">.env.local</code> to see live citizen hotspots here.
-        </p>
-        <div className="w-full max-w-xs h-32 bg-slate-900/50 rounded-lg overflow-hidden relative">
-           <div className="absolute top-1/2 left-1/4 w-12 h-12 bg-red-500/40 rounded-full blur-xl animate-pulse" />
-           <div className="absolute top-1/3 left-2/3 w-16 h-16 bg-brand-500/30 rounded-full blur-xl animate-pulse" />
+      <div className="w-full rounded-xl overflow-hidden relative mt-6 border border-slate-700 bg-[#0d1829]">
+        <div className="absolute top-3 left-3 bg-surface-900/90 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-700/50 z-10">
+          <div className="text-xs font-semibold text-brand-400 uppercase tracking-wider mb-0.5">Hotspot Map</div>
+          <div className="text-white font-medium text-sm">{priority?.theme_label || "Select a priority"}</div>
         </div>
+        <div className="absolute top-3 right-3 text-xs text-slate-500 bg-surface-900/80 px-2 py-1 rounded z-10">
+          Connect Google Maps API for live heatmap
+        </div>
+        <svg viewBox="0 0 400 300" className="w-full h-[320px]" xmlns="http://www.w3.org/2000/svg">
+          {/* Grid background */}
+          <defs>
+            <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e3a5f" strokeWidth="0.5" />
+            </pattern>
+            <radialGradient id="hotspot" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stopColor={urgencyColor} stopOpacity="0.5" />
+              <stop offset="100%" stopColor={urgencyColor} stopOpacity="0" />
+            </radialGradient>
+          </defs>
+          <rect width="400" height="300" fill="url(#grid)" />
+          {/* Road lines */}
+          <line x1="0" y1="150" x2="400" y2="150" stroke="#1e4080" strokeWidth="2" />
+          <line x1="200" y1="0" x2="200" y2="300" stroke="#1e4080" strokeWidth="2" />
+          <line x1="0" y1="75" x2="400" y2="200" stroke="#1a3060" strokeWidth="1.5" />
+          <line x1="100" y1="0" x2="350" y2="300" stroke="#1a3060" strokeWidth="1.5" />
+          {/* All ward dots */}
+          {Object.entries(wardPositions).map(([id, pos]) => (
+            <g key={id}>
+              <circle cx={pos.x} cy={pos.y} r="5" fill="#1e3a5f" stroke="#2d5a9e" strokeWidth="1.5" />
+              <text x={pos.x + 8} y={pos.y + 4} fontSize="8" fill="#4a6fa5" fontFamily="sans-serif">{pos.label}</text>
+            </g>
+          ))}
+          {/* Active ward highlight */}
+          {activeWard && (
+            <g>
+              <circle cx={activeWard.x} cy={activeWard.y} r="50" fill="url(#hotspot)" />
+              <circle cx={activeWard.x} cy={activeWard.y} r="25" fill={urgencyColor} fillOpacity="0.15" />
+              <circle cx={activeWard.x} cy={activeWard.y} r="8" fill={urgencyColor} fillOpacity="0.9" />
+              <circle cx={activeWard.x} cy={activeWard.y} r="8" fill={urgencyColor}>
+                <animate attributeName="r" values="8;18;8" dur="2s" repeatCount="indefinite" />
+                <animate attributeName="fill-opacity" values="0.9;0;0.9" dur="2s" repeatCount="indefinite" />
+              </circle>
+              <text x={activeWard.x} y={activeWard.y - 15} textAnchor="middle" fontSize="9" fill="white" fontWeight="bold" fontFamily="sans-serif">
+                {activeWard.label}
+              </text>
+            </g>
+          )}
+        </svg>
       </div>
     );
   }

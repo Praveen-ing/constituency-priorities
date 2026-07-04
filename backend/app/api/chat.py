@@ -19,8 +19,12 @@ async def chat_with_data(request: ChatRequest):
     try:
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
-            return ChatResponse(reply="API key not configured. Mock response: Based on the data, water and sanitation are the highest priorities in the Old City ward.")
-        
+            if request.context_data:
+                top = request.context_data[0]
+                fallback_msg = f"API Key not configured. [Mock Mode]: Based on the current data, the top priority is '{top.get('theme')}' in '{top.get('ward')}'. It has a high gap score of {top.get('gap_score')} derived from {top.get('submissions')} recent citizen submissions and baseline deficits."
+            else:
+                fallback_msg = "API Key not configured. [Mock Mode]: There are currently no priorities listed in the system."
+            return ChatResponse(reply=fallback_msg)
         genai.configure(api_key=api_key)
         
         # We use Gemini Pro (1.5 Pro) for complex reasoning over the data

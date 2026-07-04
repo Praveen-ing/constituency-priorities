@@ -10,6 +10,7 @@ import VoiceRecorder from "./components/VoiceRecorder";
 import LowLiteracyFlow from "./components/LowLiteracyFlow";
 import LanguageSelector from "./components/LanguageSelector";
 import SubmissionPipeline from "./components/SubmissionPipeline";
+import PhotoSubmit from "./components/PhotoSubmit";
 
 type Mode = "choose" | "voice" | "photo" | "text" | "icon" | "pipeline" | "done";
 
@@ -177,38 +178,12 @@ export default function CitizenPage() {
         )}
 
         {mode === "photo" && (
-          <div className="animate-fade-in">
-            <button onClick={() => setMode("choose")} className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors">
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-sm">Back</span>
-            </button>
-            <h2 className="text-xl font-semibold text-white mb-6">
-              {lang === "hi" ? "फ़ोटो खींचें" : lang === "te" ? "ఫోటో తీయండి" : "Take a photo"}
-            </h2>
-            <div className="glass-card p-8 flex flex-col items-center gap-4 border-dashed border-2 border-slate-600">
-              <Camera className="w-12 h-12 text-slate-500" />
-              <p className="text-slate-400 text-sm text-center">
-                {lang === "hi"
-                  ? "कैमरे से समस्या की फ़ोटो लें"
-                  : lang === "te"
-                  ? "సమస్య యొక్క ఫోటో తీయండి"
-                  : "Photograph a local issue (road, school, water point)"}
-              </p>
-              <label className="cursor-pointer">
-                <input type="file" accept="image/*" capture="environment" className="hidden" />
-                <span
-                  className="flex items-center gap-2 px-6 py-3 rounded-xl font-semibold text-white text-sm transition-all hover:scale-105"
-                  style={{ background: "linear-gradient(135deg, #f97316, #ea580c)" }}
-                >
-                  <Camera className="w-4 h-4" />
-                  {lang === "hi" ? "कैमरा खोलें" : lang === "te" ? "కెమెరా తెరవండి" : "Open Camera"}
-                </span>
-              </label>
-              <p className="text-xs text-slate-600">
-                Photo upload with Gemini analysis coming in Week 3
-              </p>
-            </div>
-          </div>
+          <PhotoSubmit
+            lang={lang}
+            onBack={() => setMode("choose")}
+            onSubmitted={(id) => { setSubmittedId(id); setMode("pipeline"); }}
+            apiBase={apiBase}
+          />
         )}
       </div>
     </div>
