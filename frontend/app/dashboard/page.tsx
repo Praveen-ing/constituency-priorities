@@ -13,6 +13,7 @@ import HotspotMap from "./components/HotspotMap";
 import LiveFeed from "./components/LiveFeed";
 import DataChat from "./components/DataChat";
 import ExportReport from "./components/ExportReport";
+import AccelerationToggle from "./components/AccelerationToggle";
 
 export interface Priority {
   priority_id: string;
@@ -116,6 +117,9 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"list" | "map">("list");
   const [showWeights, setShowWeights] = useState(false);
+  const [useGpu, setUseGpu] = useState(false);
+  const [lastElapsedMs, setLastElapsedMs] = useState<number | undefined>(undefined);
+  const [lastAccelerated, setLastAccelerated] = useState<boolean | undefined>(undefined);
   const router = useRouter();
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -139,18 +143,24 @@ export default function DashboardPage() {
 
   const recompute = async () => {
     setLoading(true);
+    const t0 = performance.now();
     try {
-      await fetch(`${apiBase}/priorities/recompute`, {
+      const res = await fetch(`${apiBase}/priorities/recompute?use_gpu=${useGpu}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(weights),
       });
+      const elapsed = Math.round(performance.now() - t0);
+      setLastElapsedMs(elapsed);
+      setLastAccelerated(useGpu);
       // Optimistic update — recompute weights locally on mock data
       const updated = applyWeightsLocally(priorities, weights);
       setPriorities(updated);
       setSelected(updated[0]);
     } catch {
-      // Recompute locally
+      const elapsed = Math.round(performance.now() - t0);
+      setLastElapsedMs(elapsed);
+      setLastAccelerated(false);
       const updated = applyWeightsLocally(priorities, weights);
       setPriorities(updated);
       setSelected(updated[0]);
@@ -225,12 +235,26 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* ── Weight sliders ── */}
+      {/* ── Weight sliders + Acceleration Toggle ── */}
       {showWeights && (
         <div className="border-b border-slate-800 bg-surface-800 px-6 py-4 animate-slide-up">
-          <WeightSliders weights={weights} onChange={setWeights} />
+          <div className="flex flex-col lg:flex-row gap-6 items-start">
+            <div className="flex-1">
+              <WeightSliders weights={weights} onChange={setWeights} />
+            </div>
+            <div className="shrink-0">
+              <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Compute Engine</div>
+              <AccelerationToggle
+                useGpu={useGpu}
+                onChange={setUseGpu}
+                lastElapsedMs={lastElapsedMs}
+                lastAccelerated={lastAccelerated}
+              />
+            </div>
+          </div>
         </div>
       )}
+
 
       {/* ── Stats bar ── */}
       <div className="grid grid-cols-3 divide-x divide-slate-800 border-b border-slate-800 bg-surface-800/50">

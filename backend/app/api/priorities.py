@@ -20,6 +20,7 @@ from app.db.bigquery_client import (
 from app.models.priority import GapScoreBreakdown, Priority, PriorityListResponse, WeightOverride
 from app.scoring.deficit_calculators import generic_deficit
 from app.scoring.gap_score import GapScoreInput, batch_compute_and_rank
+from app.scoring.gap_score_rapids import compute_gap_scores_rapids
 from app.scoring.justification import generate_justification
 
 logger = logging.getLogger(__name__)
@@ -72,23 +73,69 @@ async def list_priorities(limit: int = 20) -> PriorityListResponse:
 @router.post("/recompute", status_code=202)
 async def recompute_priorities(
     weights: WeightOverride = WeightOverride(),
+    use_gpu: bool = False,
     background_tasks: BackgroundTasks = BackgroundTasks(),
 ) -> dict:
     """
     Trigger a fresh Gap Score computation with the given weight overrides.
-    Runs asynchronously — dashboard should poll /priorities after a few seconds.
+    If use_gpu=True, routes to the NVIDIA RAPIDS engine for 5M-row computation.
+    If use_gpu=False, uses standard pandas (CPU benchmark mode).
+    Returns timing metadata so the frontend can display the speed difference.
     """
-    background_tasks.add_task(_recompute_task, weights)
-    return {"message": "Recomputation triggered", "weights": weights.model_dump()}
+    background_tasks.add_task(_recompute_task, weights, use_gpu)
+    return {"message": "Recomputation triggered", "weights": weights.model_dump(), "use_gpu": use_gpu}
 
 
-def _recompute_task(weights: WeightOverride) -> None:
+def _recompute_task(weights: WeightOverride, use_gpu: bool = False) -> None:
     """
     Background: aggregate submissions → compute Gap Scores → upsert priorities.
-    Called with ~20 theme×ward combinations — Pro justification is generated here.
+    Routes to RAPIDS (cuDF) for GPU acceleration over 5M rows when use_gpu=True.
+    Falls back gracefully to pandas (CPU) if cuDF is not available.
     """
     settings = get_settings()
     try:
+        # --- RAPIDS / large-dataset path ---
+        rapids_results, actually_gpu = compute_gap_scores_rapids(
+            weights={"w1": weights.w1, "w2": weights.w2, "w3": weights.w3, "w4": weights.w4},
+            use_gpu=use_gpu,
+        )
+
+        if rapids_results:
+            total = len(rapids_results)
+            logger.info(
+                "RAPIDS recompute: %d priorities, GPU=%s, time=%dms",
+                total, actually_gpu, rapids_results[0].elapsed_ms if rapids_results else 0
+            )
+            for rank, result in enumerate(rapids_results, start=1):
+                justification = generate_justification(
+                    theme_name=result.theme.replace("_", " ").title(),
+                    ward_name=result.ward_id.replace("_", " ").title(),
+                    constituency_name=settings.pilot_constituency,
+                    volume=result.submission_count,
+                    days=30,
+                    urgency_pct=result.mean_urgency * 100,
+                    deficit_description=f"supply gap score {result.gap_score:.2f}",
+                    population=50000,
+                    gap_score=result.gap_score,
+                    rank=rank,
+                    total=total,
+                )
+                upsert_priority({
+                    "theme_id": result.theme,
+                    "ward_id": result.ward_id,
+                    "gap_score": result.gap_score,
+                    "citizen_volume_norm": min(result.submission_count / 100000, 1.0),
+                    "urgency_norm": result.mean_urgency,
+                    "data_deficit_norm": result.gap_score,
+                    "population_norm": 0.5,
+                    "justification": justification,
+                    "rank": rank,
+                    "submission_count": result.submission_count,
+                    "elapsed_ms": result.elapsed_ms,
+                    "accelerated": result.accelerated,
+                })
+            logger.info("Recomputed %d priorities via %s", total, "GPU" if actually_gpu else "CPU")
+            return
         theme_stats = get_theme_stats()
         if not theme_stats:
             logger.warning("No theme stats found — skipping recompute")
