@@ -52,6 +52,16 @@ def generate_justification(
         A single justification sentence (≤30 words).
     """
     settings = get_settings()
+
+    # --- Early exit if Gemini API key is not configured ---
+    if not settings.gemini_api_key:
+        logger.debug("GEMINI_API_KEY not set — using template justification")
+        level = "HIGH" if gap_score >= 0.65 else "MEDIUM" if gap_score >= 0.40 else "LOW"
+        return (
+            f"{volume} citizen submissions ({urgency_pct:.0f}% urgent) + {deficit_description} "
+            f"in {ward_name} drives {level} priority rating for {theme_name}."
+        )
+
     genai.configure(api_key=settings.gemini_api_key)
     model = genai.GenerativeModel(
         model_name=settings.gemini_pro_model,

@@ -5,53 +5,76 @@ const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase only if config is present, otherwise use mock
-let app;
+// Only initialize Firebase on the client side (browser) to prevent SSR crashes
+const isConfigured =
+  typeof window !== "undefined" &&
+  !!firebaseConfig.apiKey &&
+  firebaseConfig.apiKey !== "undefined";
+
+let app: any;
 let auth: any;
 let googleProvider: any;
 let signInWithPopup: any;
 let signOut: any;
 
-try {
-  if (firebaseConfig.apiKey && firebaseConfig.apiKey !== "your_firebase_api_key") {
-    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-    auth = getAuth(app);
-    googleProvider = new GoogleAuthProvider();
-    signInWithPopup = firebaseSignInWithPopup;
-    signOut = firebaseSignOut;
-  } else {
-    throw new Error("Firebase config missing");
-  }
-} catch (e) {
-  console.warn("Firebase not configured. Using mock auth for development.");
+if (isConfigured) {
+  // Real Firebase path — used when keys are in .env.local
+  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+  auth = getAuth(app);
+  googleProvider = new GoogleAuthProvider();
+  signInWithPopup = firebaseSignInWithPopup;
+  signOut = firebaseSignOut;
+  console.log("Firebase initialized with real credentials.");
+} else {
+  // Mock auth for local development — simulates logged-in state
+  console.log("Firebase not configured. Using mock auth for development.");
+
   let mockUser: any = null;
   let authListeners: any[] = [];
-  
+
   auth = {
     onAuthStateChanged: (cb: any) => {
       authListeners.push(cb);
-      cb(mockUser);
+      // In development, auto-login as a mock MP user after a short delay
+      if (typeof window !== "undefined") {
+        setTimeout(() => {
+          mockUser = {
+            uid: "dev-mp-user-001",
+            email: "mp@janaawaaz.dev",
+            displayName: "Dev MP User",
+            photoURL: null,
+          };
+          authListeners.forEach((l) => l(mockUser));
+        }, 500);
+      }
       return () => {
         authListeners = authListeners.filter((l) => l !== cb);
       };
     },
-  } as any;
-  googleProvider = {} as any;
-  
-  signInWithPopup = async () => {
-    console.log("Firebase not configured. Mock login successful for development.");
-    mockUser = { displayName: "Mock User", email: "mock@example.com", uid: "123" };
-    authListeners.forEach((cb) => cb(mockUser));
+    currentUser: null,
+  };
+
+  googleProvider = {};
+
+  signInWithPopup = async (_auth: any, _provider: any) => {
+    mockUser = {
+      uid: "dev-mp-user-001",
+      email: "mp@janaawaaz.dev",
+      displayName: "Dev MP User",
+      photoURL: null,
+    };
+    authListeners.forEach((l) => l(mockUser));
     return { user: mockUser };
   };
-  
-  signOut = async () => {
-    console.log("Mock signed out");
+
+  signOut = async (_auth: any) => {
     mockUser = null;
-    authListeners.forEach((cb) => cb(null));
+    authListeners.forEach((l) => l(null));
   };
 }
 
