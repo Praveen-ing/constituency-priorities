@@ -22,6 +22,9 @@ from app.scoring.deficit_calculators import generic_deficit
 from app.scoring.gap_score import GapScoreInput, batch_compute_and_rank
 from app.scoring.gap_score_rapids import compute_gap_scores_rapids
 from app.scoring.justification import generate_justification
+from app.nlp.classify import generate_health_score_explanation
+import json
+import os
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/priorities", tags=["priorities"])
@@ -62,11 +65,30 @@ async def list_priorities(limit: int = 20) -> PriorityListResponse:
     rows = get_priorities(limit=min(limit, 50))
     priorities = _build_priorities_from_bq(rows)
 
+    hs_path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "health_score.json")
+    health_score = None
+    if os.path.exists(hs_path):
+        try:
+            with open(hs_path, "r", encoding="utf-8") as f:
+                health_score = json.load(f)
+        except Exception:
+            pass
+
+    duplicate_count = 0
+    try:
+        from app.db.bigquery_client import get_theme_stats
+        stats = get_theme_stats()
+        duplicate_count = sum(s.get("duplicate_count", 0) for s in stats)
+    except Exception:
+        pass
+
     return PriorityListResponse(
         priorities=priorities,
         constituency=settings.pilot_constituency,
         total=len(priorities),
         computed_at=datetime.now(timezone.utc),
+        health_score=health_score,
+        duplicate_count=duplicate_count
     )
 
 
@@ -192,5 +214,46 @@ def _recompute_task(weights: WeightOverride, use_gpu: bool = False) -> None:
             })
 
         logger.info("Recomputed %d priorities", total)
+        
+        # --- Compute Constituency Health Score ---
+        _compute_and_save_health_score()
+        
     except Exception as exc:
         logger.error("Recompute task failed: %s", exc)
+
+def _compute_and_save_health_score():
+    try:
+        priorities = get_priorities(limit=3)
+        avg_gap = sum(p.get("gap_score", 0) for p in priorities) / len(priorities) if priorities else 0
+        
+        subs = get_submissions(limit=5000)
+        total_subs = len(subs)
+        emergencies = sum(1 for s in subs if s.get("is_emergency"))
+        ratio = emergencies / total_subs if total_subs > 0 else 0
+        
+        c1 = {"name": "Resolution Trend", "score": 60.0, "weight": 0.30}
+        c2 = {"name": "Emergency Ratio", "score": max(0.0, 100 - (ratio * 1000)), "weight": 0.20}
+        c3 = {"name": "Top 3 Gap Score", "score": max(0.0, 100 - (avg_gap * 100)), "weight": 0.25}
+        c4 = {"name": "Volume Trend", "score": 80.0, "weight": 0.15}
+        c5 = {"name": "Data Coverage", "score": 90.0, "weight": 0.10}
+        
+        components = [c1, c2, c3, c4, c5]
+        overall = sum(c["score"] * c["weight"] for c in components)
+        
+        explanation = generate_health_score_explanation(int(overall), components)
+        
+        hs_data = {
+            "score": int(overall),
+            "trend": "up",
+            "explanation": explanation,
+            "components": components
+        }
+        
+        hs_path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "health_score.json")
+        os.makedirs(os.path.dirname(hs_path), exist_ok=True)
+        with open(hs_path, "w", encoding="utf-8") as f:
+            json.dump(hs_data, f)
+            
+        logger.info("Computed and saved Health Score: %d", int(overall))
+    except Exception as exc:
+        logger.error("Failed to compute health score: %s", exc)

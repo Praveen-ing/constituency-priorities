@@ -2,12 +2,14 @@
 
 import { useState, useRef, ChangeEvent } from "react";
 import { Camera, ArrowLeft, Upload, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import QualityWarning from "./QualityWarning";
 
 interface Props {
   lang: string;
   onBack: () => void;
   onSubmitted: (id: string) => void;
   apiBase: string;
+  userId?: string;
 }
 
 type AnalysisState = "idle" | "preview" | "analyzing" | "analyzed" | "submitting";
@@ -19,11 +21,12 @@ const MOCK_ANALYSIS_RESULTS = [
   { theme: "Electricity", urgency: "Medium", confidence: "85%", description: "Street light or power line damage detected." },
 ];
 
-export default function PhotoSubmit({ lang, onBack, onSubmitted, apiBase }: Props) {
+export default function PhotoSubmit({ lang, onBack, onSubmitted, apiBase, userId }: Props) {
   const [state, setState] = useState<AnalysisState>("idle");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<typeof MOCK_ANALYSIS_RESULTS[0] | null>(null);
+  const [qualityCheck, setQualityCheck] = useState<{score: number, suggestions: string[]} | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const t = {
@@ -53,10 +56,35 @@ export default function PhotoSubmit({ lang, onBack, onSubmitted, apiBase }: Prop
 
   const runAnalysis = async () => {
     setState("analyzing");
+    
+    let qualityData = null;
+    try {
+      if (imageFile) {
+        // Helper to convert file to base64
+        const getBase64 = (file: File): Promise<string> => {
+          return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+          });
+        };
+        const base64Img = await getBase64(imageFile);
+        const checkRes = await fetch(`${apiBase}/submissions/quality-check`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ media_type: "image", content: base64Img, original_language: lang }),
+        });
+        qualityData = await checkRes.json();
+      }
+    } catch (e) {
+      console.warn("Quality check failed", e);
+    }
+    
     // Simulate Gemini multimodal analysis with a 2.5s delay
-    await new Promise((r) => setTimeout(r, 2500));
+    await new Promise((r) => setTimeout(r, 1000));
     const result = MOCK_ANALYSIS_RESULTS[Math.floor(Math.random() * MOCK_ANALYSIS_RESULTS.length)];
     setAnalysis(result);
+    setQualityCheck(qualityData);
     setState("analyzed");
   };
 
@@ -72,6 +100,9 @@ export default function PhotoSubmit({ lang, onBack, onSubmitted, apiBase }: Prop
           content: `[Photo submission] ${analysis.theme}: ${analysis.description} (AI Confidence: ${analysis.confidence})`,
           original_language: lang === "hi" ? "hi-IN" : lang === "te" ? "te-IN" : "en-IN",
           source: "web",
+          quality_score: qualityCheck?.score ?? 100.0,
+          quality_suggestions: qualityCheck?.suggestions ?? [],
+          user_id: userId
         }),
       });
       const data = await res.json();
@@ -148,6 +179,18 @@ export default function PhotoSubmit({ lang, onBack, onSubmitted, apiBase }: Prop
               <p className="text-slate-300 text-sm mt-3">{analysis.description}</p>
             </div>
           )}
+          
+          {state === "analyzed" && qualityCheck && qualityCheck.score < 65 && (
+            <div className="mt-2">
+              <QualityWarning
+                score={qualityCheck.score}
+                suggestions={qualityCheck.suggestions}
+                lang={lang}
+                onProceed={submitPhoto}
+                onImprove={() => { setState("idle"); setImageUrl(null); setAnalysis(null); setQualityCheck(null); }}
+              />
+            </div>
+          )}
 
           <div className="flex gap-3">
             <button
@@ -167,7 +210,7 @@ export default function PhotoSubmit({ lang, onBack, onSubmitted, apiBase }: Prop
                 {t.analyze}
               </button>
             )}
-            {state === "analyzed" && (
+            {state === "analyzed" && (!qualityCheck || qualityCheck.score >= 65) && (
               <button
                 id="submit-photo-btn"
                 onClick={submitPhoto}

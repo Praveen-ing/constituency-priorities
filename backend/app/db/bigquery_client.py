@@ -50,6 +50,8 @@ def _ensure_sqlite_schema() -> None:
             ward_id TEXT,
             urgency_score REAL DEFAULT 0.5,
             sentiment_score REAL DEFAULT 0.0,
+            quality_score REAL,
+            quality_suggestions TEXT,
             is_anonymous INTEGER DEFAULT 0,
             created_at TEXT,
             processed INTEGER DEFAULT 0
@@ -77,6 +79,24 @@ def _ensure_sqlite_schema() -> None:
             computed_at TEXT
         );
     """)
+    
+    try:
+        conn.execute("ALTER TABLE submissions ADD COLUMN is_emergency INTEGER DEFAULT 0")
+        conn.execute("ALTER TABLE submissions ADD COLUMN emergency_type TEXT")
+    except sqlite3.OperationalError:
+        pass # Columns probably already exist
+        
+    try:
+        conn.execute("ALTER TABLE submissions ADD COLUMN user_id TEXT")
+    except sqlite3.OperationalError:
+        pass
+
+    try:
+        conn.execute("ALTER TABLE submissions ADD COLUMN is_duplicate INTEGER DEFAULT 0")
+        conn.execute("ALTER TABLE submissions ADD COLUMN duplicate_of TEXT")
+    except sqlite3.OperationalError:
+        pass
+
     conn.commit()
     conn.close()
 
@@ -137,14 +157,21 @@ def insert_submission(row: dict[str, Any]) -> str:
     conn.execute(
         """INSERT OR REPLACE INTO submissions
            (id, media_type, content, original_language, source, theme, ward_id,
-            urgency_score, sentiment_score, is_anonymous, created_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            urgency_score, sentiment_score, quality_score, quality_suggestions,
+            is_anonymous, created_at, is_emergency, emergency_type, user_id,
+            is_duplicate, duplicate_of)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (
             row.get("id"), row.get("media_type", "text"), content_val,
             row.get("original_language", "en"), row.get("source", "web"),
             row.get("theme"), row.get("ward_id"),
             row.get("urgency_score", 0.5), row.get("sentiment_score", 0.0),
+            row.get("quality_score"),
+            json.dumps(row.get("quality_suggestions")) if row.get("quality_suggestions") else None,
             1 if row.get("is_anonymous") else 0, row.get("created_at"),
+            1 if row.get("is_emergency") else 0, row.get("emergency_type"),
+            row.get("user_id"),
+            1 if row.get("is_duplicate") else 0, row.get("duplicate_of"),
         )
     )
     conn.commit()
@@ -157,6 +184,8 @@ def get_submissions(
     theme: str | None = None,
     ward_id: str | None = None,
     limit: int = 100,
+    is_emergency: bool | None = None,
+    user_id: str | None = None,
 ) -> list[dict]:
     if _use_bigquery():
         try:
@@ -169,6 +198,12 @@ def get_submissions(
             if ward_id:
                 where_clauses.append("ward_id = @ward_id")
                 params.append(bigquery.ScalarQueryParameter("ward_id", "STRING", ward_id))
+            if is_emergency is not None:
+                where_clauses.append("is_emergency = @is_emergency")
+                params.append(bigquery.ScalarQueryParameter("is_emergency", "BOOL", is_emergency))
+            if user_id:
+                where_clauses.append("user_id = @user_id")
+                params.append(bigquery.ScalarQueryParameter("user_id", "STRING", user_id))
             where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
             query = f"SELECT * FROM `{_table('submissions')}` {where_sql} ORDER BY created_at DESC LIMIT @limit"
             params.append(bigquery.ScalarQueryParameter("limit", "INT64", limit))
@@ -186,11 +221,27 @@ def get_submissions(
     if ward_id:
         wheres.append("ward_id = ?")
         vals.append(ward_id)
+    if is_emergency is not None:
+        wheres.append("is_emergency = ?")
+        vals.append(1 if is_emergency else 0)
+    if user_id:
+        wheres.append("user_id = ?")
+        vals.append(user_id)
     where_sql = f"WHERE {' AND '.join(wheres)}" if wheres else ""
     vals.append(limit)
     rows = conn.execute(f"SELECT * FROM submissions {where_sql} ORDER BY created_at DESC LIMIT ?", vals).fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+def get_submission(submission_id: str) -> dict | None:
+    if _use_bigquery():
+        # Fallback for now if BQ is enabled, though for hackathon mostly SQLite is used
+        return None
+        
+    conn = _get_sqlite_conn()
+    row = conn.execute("SELECT * FROM submissions WHERE id = ?", (submission_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
 
 
 def get_priorities(constituency: str | None = None, limit: int = 20) -> list[dict]:
@@ -264,7 +315,10 @@ def get_theme_stats() -> list[dict]:
         try:
             client = get_bq_client()
             query = f"""
-                SELECT theme, COUNT(*) as submission_count,
+                SELECT theme,
+                       CAST(SUM(CASE WHEN is_duplicate = TRUE THEN 0.3 ELSE 1.0 END) AS INT64) as submission_count,
+                       COUNT(*) as raw_count,
+                       SUM(CASE WHEN is_duplicate = TRUE THEN 1 ELSE 0 END) as duplicate_count,
                        AVG(urgency_score) as mean_urgency,
                        ARRAY_AGG(DISTINCT ward_id IGNORE NULLS LIMIT 5) as ward_ids
                 FROM `{_table("submissions")}`
@@ -279,7 +333,10 @@ def get_theme_stats() -> list[dict]:
     # SQLite fallback
     conn = _get_sqlite_conn()
     rows = conn.execute("""
-        SELECT theme, COUNT(*) as submission_count,
+        SELECT theme, 
+               CAST(SUM(CASE WHEN is_duplicate = 1 THEN 0.3 ELSE 1.0 END) AS INTEGER) as submission_count,
+               COUNT(*) as raw_count,
+               SUM(CASE WHEN is_duplicate = 1 THEN 1 ELSE 0 END) as duplicate_count,
                AVG(urgency_score) as mean_urgency
         FROM submissions WHERE theme IS NOT NULL
         GROUP BY theme ORDER BY submission_count DESC

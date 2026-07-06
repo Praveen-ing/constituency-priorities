@@ -25,6 +25,18 @@ class SubmissionCreate(BaseModel):
     lat: Optional[float] = None
     lng: Optional[float] = None
     source: str = Field("web", description="web | whatsapp | sms")
+    quality_score: Optional[float] = Field(None, description="0.0 to 100.0 quality score")
+    quality_suggestions: Optional[list[str]] = Field(None, description="List of improvement suggestions")
+    user_id: Optional[str] = None
+
+class QualityCheckRequest(BaseModel):
+    media_type: MediaType
+    content: str
+    original_language: str = "en"
+
+class QualityCheckResponse(BaseModel):
+    score: float
+    suggestions: list[str]
 
 
 class Submission(BaseModel):
@@ -43,6 +55,11 @@ class Submission(BaseModel):
     lng: Optional[float] = None
     cluster_id: Optional[int] = None
     source: str = "web"
+    is_emergency: bool = False
+    emergency_type: Optional[str] = None
+    user_id: Optional[str] = None
+    is_duplicate: bool = False
+    duplicate_of: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -54,3 +71,6 @@ class SubmissionResponse(BaseModel):
     message: str = "Submission received and queued for processing"
     theme: Optional[str] = None
     urgency: Optional[float] = None
+    is_emergency: bool = False
+    emergency_type: Optional[str] = None
+    user_id: Optional[str] = None

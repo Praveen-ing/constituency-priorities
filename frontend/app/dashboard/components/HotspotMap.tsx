@@ -76,6 +76,7 @@ export default function HotspotMap({ priority }: Props) {
           zoomControl: true,
         });
 
+        // @ts-expect-error: @types/google.maps visualization types are sometimes incomplete
         const hl = new google.maps.visualization.HeatmapLayer({
           data: [],
           map: m,
@@ -123,6 +124,7 @@ export default function HotspotMap({ priority }: Props) {
           
           if (map && heatmapLayer && window.google) {
             const heatmapData = filtered.map(s => new google.maps.LatLng(s.lat, s.lng));
+            // @ts-expect-error: setData is missing in some versions of @types/google.maps
             heatmapLayer.setData(heatmapData);
             
             // Re-center map if there are points

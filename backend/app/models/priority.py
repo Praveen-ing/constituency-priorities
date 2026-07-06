@@ -19,6 +19,17 @@ class Theme(BaseModel):
     last_updated: datetime
 
 
+class HealthScoreComponent(BaseModel):
+    name: str
+    score: float
+    weight: float
+
+class ConstituencyHealthScore(BaseModel):
+    score: int
+    trend: str
+    explanation: str
+    components: list[HealthScoreComponent]
+
 class GapScoreBreakdown(BaseModel):
     """The four components of the Gap Score, each normalized 0-1."""
     citizen_volume_norm: float = Field(..., ge=0, le=1)
@@ -44,6 +55,11 @@ class Priority(BaseModel):
     rank: int
     computed_at: datetime
     submission_count: int = 0
+    # Transparency additions
+    confidence: str = "High"
+    urgency_histogram: dict[str, int] = {}
+    data_deficit_figure: str = ""
+    weights_used: dict[str, float] = {}
 
 
 class PriorityListResponse(BaseModel):
@@ -51,6 +67,8 @@ class PriorityListResponse(BaseModel):
     constituency: str
     total: int
     computed_at: datetime
+    health_score: Optional[ConstituencyHealthScore] = None
+    duplicate_count: int = 0
 
 
 class WeightOverride(BaseModel):

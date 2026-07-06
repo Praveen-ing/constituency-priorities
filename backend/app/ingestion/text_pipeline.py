@@ -14,10 +14,10 @@ def process_text(text: str) -> str:
     if not text:
         return ""
 
-    # Strip excessive whitespace
-    text = re.sub(r"\s+", " ", text).strip()
-
     # Remove URLs (not useful for classification)
     text = re.sub(r"https?://\S+", "", text)
+
+    # Strip excessive whitespace
+    text = re.sub(r"\s+", " ", text).strip()
 
     return text

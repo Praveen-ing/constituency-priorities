@@ -2,16 +2,18 @@
 
 import { useState, useRef } from "react";
 import { Mic, Square, Send, ArrowLeft, Volume2 } from "lucide-react";
+import QualityWarning from "./QualityWarning";
 
 interface Props {
   lang: string;
   onBack: () => void;
   onSubmitted: (id: string) => void;
+  userId?: string;
 }
 
 type RecordState = "idle" | "recording" | "recorded" | "submitting";
 
-export default function VoiceRecorder({ lang, onBack, onSubmitted }: Props) {
+export default function VoiceRecorder({ lang, onBack, onSubmitted, userId }: Props) {
   const [state, setState] = useState<RecordState>("idle");
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -19,6 +21,7 @@ export default function VoiceRecorder({ lang, onBack, onSubmitted }: Props) {
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [qualityCheck, setQualityCheck] = useState<{score: number, suggestions: string[]} | null>(null);
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -69,21 +72,56 @@ export default function VoiceRecorder({ lang, onBack, onSubmitted }: Props) {
     if (timerRef.current) clearInterval(timerRef.current);
   };
 
-  const submitAudio = async () => {
+  const submitAudio = async (skipQualityCheck = false) => {
     if (!audioBlob) return;
     setState("submitting");
 
-    // For now, submit as text noting voice submission
-    // In full implementation: upload audioBlob to GCS, then submit GCS URI
     try {
+      // Helper to convert blob to base64 data URI
+      const getBase64 = (blob: Blob): Promise<string> => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+      };
+      
+      const audioData = await getBase64(audioBlob);
+
+      if (!skipQualityCheck && !qualityCheck) {
+        const checkRes = await fetch(`${apiBase}/submissions/quality-check`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            media_type: "audio", 
+            content: audioData, 
+            original_language: lang === "hi" ? "hi-IN" : lang === "te" ? "te-IN" : "en-IN" 
+          }),
+        });
+        const qualityData = await checkRes.json();
+        
+        if (qualityData.score < 65) {
+          setQualityCheck(qualityData);
+          setState("recorded");
+          return;
+        }
+        setQualityCheck(qualityData);
+      }
+
+      const payloadScore = qualityCheck?.score ?? 100.0;
+      const payloadSuggestions = qualityCheck?.suggestions ?? [];
+
       const res = await fetch(`${apiBase}/submissions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          media_type: "text",
-          content: `[Voice submission in ${lang} — ${duration}s audio — transcription pending]`,
+          media_type: "audio",
+          content: audioData,
           original_language: lang === "hi" ? "hi-IN" : lang === "te" ? "te-IN" : "en-IN",
           source: "web",
+          quality_score: payloadScore,
+          quality_suggestions: payloadSuggestions,
+          user_id: userId
         }),
       });
       const data = await res.json();
@@ -143,24 +181,37 @@ export default function VoiceRecorder({ lang, onBack, onSubmitted }: Props) {
 
       {state === "recorded" && audioUrl && (
         <div className="w-full flex flex-col gap-3">
-          <audio controls src={audioUrl} className="w-full rounded-lg" />
-          <div className="flex gap-3">
-            <button
-              onClick={() => { setAudioBlob(null); setAudioUrl(null); setState("idle"); }}
+          <audio controls src={audioUrl} className="w-full rounded-lg mb-2" />
+          
+          {qualityCheck && (
+            <QualityWarning
+              score={qualityCheck.score}
+              suggestions={qualityCheck.suggestions}
+              lang={lang}
+              onProceed={() => submitAudio(true)}
+              onImprove={() => { setAudioBlob(null); setAudioUrl(null); setState("idle"); setQualityCheck(null); }}
+            />
+          )}
+
+          {!qualityCheck && (
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setAudioBlob(null); setAudioUrl(null); setState("idle"); }}
               className="flex-1 py-3 rounded-xl border border-slate-600 text-slate-300 font-semibold text-sm hover:bg-white/5 transition-colors"
             >
               {t.rerecord}
             </button>
-            <button
-              id="submit-voice-btn"
-              onClick={submitAudio}
-              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-white text-sm transition-all hover:scale-[1.02]"
-              style={{ background: "linear-gradient(135deg, #1e88ed, #1671da)" }}
-            >
-              <Send className="w-4 h-4" />
-              {t.submit}
-            </button>
-          </div>
+              <button
+                id="submit-voice-btn"
+                onClick={() => submitAudio(false)}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-semibold text-white text-sm transition-all hover:scale-[1.02]"
+                style={{ background: "linear-gradient(135deg, #1e88ed, #1671da)" }}
+              >
+                <Send className="w-4 h-4" />
+                {t.submit}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

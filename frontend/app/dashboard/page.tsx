@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { RefreshCw, Sliders, Map, List, Activity, LogOut } from "lucide-react";
+import { RefreshCw, Sliders, Map, List, Activity, LogOut, AlertTriangle } from "lucide-react";
 import { auth, signOut } from "../../lib/firebase";
 import { useRouter } from "next/navigation";
 import PriorityList from "./components/PriorityList";
 import GapScoreCard from "./components/GapScoreCard";
+import HealthScore, { HealthScoreData } from "./components/HealthScore";
 import WeightSliders from "./components/WeightSliders";
 import ThemeDrilldown from "./components/ThemeDrilldown";
 import HotspotMap from "./components/HotspotMap";
@@ -14,6 +15,14 @@ import LiveFeed from "./components/LiveFeed";
 import DataChat from "./components/DataChat";
 import ExportReport from "./components/ExportReport";
 import AccelerationToggle from "./components/AccelerationToggle";
+
+export interface EmergencyAlert {
+  id: string;
+  created_at: string;
+  original_content: string;
+  emergency_type: string;
+  ward_id?: string;
+}
 
 export interface Priority {
   priority_id: string;
@@ -35,6 +44,11 @@ export interface Priority {
   justification: string;
   rank: number;
   submission_count: number;
+  // Transparency fields
+  confidence?: string;
+  data_deficit_figure?: string;
+  urgency_histogram?: Record<string, number>;
+  weights_used?: Record<string, number>;
 }
 
 export interface Weights {
@@ -112,6 +126,7 @@ const MOCK_PRIORITIES: Priority[] = [
 
 export default function DashboardPage() {
   const [priorities, setPriorities] = useState<Priority[]>(MOCK_PRIORITIES);
+  const [emergencies, setEmergencies] = useState<EmergencyAlert[]>([]);
   const [selected, setSelected] = useState<Priority | null>(MOCK_PRIORITIES[0]);
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
   const [loading, setLoading] = useState(false);
@@ -120,6 +135,8 @@ export default function DashboardPage() {
   const [useGpu, setUseGpu] = useState(false);
   const [lastElapsedMs, setLastElapsedMs] = useState<number | undefined>(undefined);
   const [lastAccelerated, setLastAccelerated] = useState<boolean | undefined>(undefined);
+  const [healthScore, setHealthScore] = useState<HealthScoreData | null>(null);
+  const [duplicateCount, setDuplicateCount] = useState(0);
   const router = useRouter();
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -129,8 +146,10 @@ export default function DashboardPage() {
       const res = await fetch(`${apiBase}/priorities?limit=20`);
       if (res.ok) {
         const data = await res.json();
+        setPriorities(applyWeightsLocally(data.priorities || [], weights));
+        setHealthScore(data.health_score || null);
+        setDuplicateCount(data.duplicate_count || 0);
         if (data.priorities?.length) {
-          setPriorities(data.priorities);
           setSelected(data.priorities[0]);
         }
       }
@@ -138,6 +157,18 @@ export default function DashboardPage() {
       // Use mock data if API unavailable
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchEmergencies = async () => {
+    try {
+      const res = await fetch(`${apiBase}/submissions?is_emergency=true&limit=5`);
+      if (res.ok) {
+        const data = await res.json();
+        setEmergencies(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch emergencies", err);
     }
   };
 
@@ -195,7 +226,14 @@ export default function DashboardPage() {
       .map((p, i) => ({ ...p, rank: i + 1 }));
   }
 
-  useEffect(() => { fetchPriorities(); }, []);
+  useEffect(() => { 
+    fetchPriorities();
+    fetchEmergencies();
+    
+    // Poll for emergencies every 30 seconds
+    const interval = setInterval(fetchEmergencies, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const totalSubmissions = priorities.reduce((s, p) => s + p.submission_count, 0);
 
@@ -268,11 +306,12 @@ export default function DashboardPage() {
 
 
       {/* ── Stats bar ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-slate-800 border-b border-slate-800 bg-surface-800/50">
+      <div className="grid grid-cols-2 sm:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-800 border-b border-slate-800 bg-surface-800/50">
         {[
           { label: "Total Submissions", value: totalSubmissions, icon: Activity },
           { label: "Priority Areas", value: priorities.length, icon: List },
           { label: "Top Gap Score", value: `${(priorities[0]?.gap_score * 100 || 0).toFixed(0)}%`, icon: Map },
+          { label: "Duplicates Filtered", value: duplicateCount, icon: Activity },
         ].map(({ label, value, icon: Icon }) => (
           <div key={label} className="flex items-center gap-3 px-6 py-3">
             <Icon className="w-4 h-4 text-brand-400 shrink-0" />
@@ -301,6 +340,40 @@ export default function DashboardPage() {
 
         {/* Detail panel */}
         <main className="flex-1 overflow-y-auto p-6">
+          <HealthScore data={healthScore} />
+          
+          {emergencies.length > 0 && (
+            <div className="mb-8 animate-slide-up">
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle className="w-5 h-5 text-red-500" />
+                <h3 className="text-lg font-bold text-red-500 uppercase tracking-wider">Emergency Alerts</h3>
+              </div>
+              <div className="flex flex-col gap-3">
+                {emergencies.map((alert) => (
+                  <div key={alert.id} className="border border-red-900/50 bg-red-950/20 rounded-xl p-4 flex flex-col gap-2 relative overflow-hidden">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-500/20 text-red-400 uppercase tracking-wider">
+                          {alert.emergency_type || "Emergency"}
+                        </span>
+                        {alert.ward_id && (
+                          <span className="text-xs text-slate-400 bg-slate-800 px-2 py-0.5 rounded">
+                            Ward: {alert.ward_id}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-slate-500 font-mono">
+                        {new Date(alert.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-200 mt-1">{alert.original_content}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {selected ? (
             <div className="animate-fade-in max-w-2xl">
               <div className="flex items-start justify-between mb-6">

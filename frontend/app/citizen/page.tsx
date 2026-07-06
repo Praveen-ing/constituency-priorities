@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Mic, Camera, MessageSquare, Grid3X3,
@@ -11,6 +11,9 @@ import LowLiteracyFlow from "./components/LowLiteracyFlow";
 import LanguageSelector from "./components/LanguageSelector";
 import SubmissionPipeline from "./components/SubmissionPipeline";
 import PhotoSubmit from "./components/PhotoSubmit";
+import QualityWarning from "./components/QualityWarning";
+import { auth } from "../../lib/firebase";
+import { t } from "../../lib/i18n/strings";
 
 type Mode = "choose" | "voice" | "photo" | "text" | "icon" | "pipeline" | "done";
 
@@ -27,17 +30,55 @@ export default function CitizenPage() {
   const [submittedId, setSubmittedId] = useState<string | null>(null);
   const [textInput, setTextInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [qualityCheck, setQualityCheck] = useState<{score: number, suggestions: string[]} | null>(null);
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    const unsubscribe = auth.onAuthStateChanged(setUser);
+    return () => unsubscribe();
+  }, []);
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-  const submitText = async () => {
+  const submitText = async (skipQualityCheck = false) => {
     if (!textInput.trim()) return;
     setLoading(true);
+    
     try {
+      if (!skipQualityCheck && !qualityCheck) {
+        // Run quality check first
+        const checkRes = await fetch(`${apiBase}/submissions/quality-check`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ media_type: "text", content: textInput, original_language: lang }),
+        });
+        const qualityData = await checkRes.json();
+        
+        if (qualityData.score < 65) {
+          setQualityCheck(qualityData);
+          setLoading(false);
+          return;
+        }
+        // If score is good, proceed implicitly
+        setQualityCheck(qualityData);
+      }
+
+      // Final submission
+      const payloadScore = qualityCheck?.score ?? 100.0;
+      const payloadSuggestions = qualityCheck?.suggestions ?? [];
+
       const res = await fetch(`${apiBase}/submissions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ media_type: "text", content: textInput, original_language: lang, source: "web" }),
+        body: JSON.stringify({ 
+          media_type: "text", 
+          content: textInput, 
+          original_language: lang, 
+          source: "web",
+          quality_score: payloadScore,
+          quality_suggestions: payloadSuggestions,
+          user_id: user?.uid
+        }),
       });
       const data = await res.json();
       setSubmittedId(data.id);
@@ -85,8 +126,13 @@ export default function CitizenPage() {
           <ArrowLeft className="w-4 h-4" />
           <span className="text-sm">Home</span>
         </Link>
-        <h1 className="text-lg font-semibold text-white">Submit a Priority</h1>
-        <LanguageSelector lang={lang} onLangChange={setLang} />
+        <h1 className="text-lg font-semibold text-white truncate">Submit a Priority</h1>
+        <div className="flex items-center gap-4">
+          <Link href="/citizen/my-submissions" className="text-sm text-brand-400 hover:text-brand-300">
+            {t("my_submissions_title", lang) || "My Submissions"}
+          </Link>
+          <LanguageSelector lang={lang} onLangChange={setLang} />
+        </div>
       </header>
 
       <div className="flex-1 max-w-2xl mx-auto w-full px-6 py-8 flex flex-col justify-center">
@@ -130,6 +176,7 @@ export default function CitizenPage() {
             lang={lang}
             onBack={() => setMode("choose")}
             onSubmitted={(id) => { setSubmittedId(id); setMode("pipeline"); }}
+            userId={user?.uid}
           />
         )}
 
@@ -138,12 +185,13 @@ export default function CitizenPage() {
             lang={lang}
             onBack={() => setMode("choose")}
             onSubmitted={(id) => { setSubmittedId(id); setMode("pipeline"); }}
+            userId={user?.uid}
           />
         )}
 
         {mode === "text" && (
           <div className="animate-fade-in">
-            <button onClick={() => setMode("choose")} className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors">
+            <button onClick={() => { setMode("choose"); setQualityCheck(null); setTextInput(""); }} className="flex items-center gap-2 text-slate-400 hover:text-white mb-6 transition-colors">
               <ArrowLeft className="w-4 h-4" />
               <span className="text-sm">Back</span>
             </button>
@@ -162,18 +210,31 @@ export default function CitizenPage() {
                   : "Example: Our ward has a severe water shortage problem..."
               }
               rows={6}
-              className="w-full bg-surface-700 border border-slate-600 rounded-xl p-4 text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 resize-none transition-colors text-sm leading-relaxed"
+              className="w-full bg-surface-700 border border-slate-600 rounded-xl p-4 text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 resize-none transition-colors text-sm leading-relaxed mb-4"
             />
-            <button
-              id="submit-text-btn"
-              onClick={submitText}
-              disabled={loading || !textInput.trim()}
+            
+            {qualityCheck && (
+              <QualityWarning
+                score={qualityCheck.score}
+                suggestions={qualityCheck.suggestions}
+                lang={lang}
+                onProceed={() => submitText(true)}
+                onImprove={() => setQualityCheck(null)}
+              />
+            )}
+            
+            {!qualityCheck && (
+              <button
+                id="submit-text-btn"
+                onClick={() => submitText(false)}
+                disabled={loading || !textInput.trim()}
               className="mt-4 w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-white transition-all duration-200 hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed disabled:scale-100"
               style={{ background: "linear-gradient(135deg, #1e88ed, #1671da)" }}
-            >
-              {loading ? "Submitting..." : lang === "hi" ? "जमा करें" : lang === "te" ? "సమర్పించు" : "Submit"}
-              {!loading && <ArrowRight className="w-4 h-4" />}
-            </button>
+              >
+                {loading ? t("quality_review_checking", lang) : lang === "hi" ? "जमा करें" : lang === "te" ? "సమర్పించు" : "Submit"}
+                {!loading && <ArrowRight className="w-4 h-4" />}
+              </button>
+            )}
           </div>
         )}
 
@@ -183,6 +244,7 @@ export default function CitizenPage() {
             onBack={() => setMode("choose")}
             onSubmitted={(id) => { setSubmittedId(id); setMode("pipeline"); }}
             apiBase={apiBase}
+            userId={user?.uid}
           />
         )}
       </div>

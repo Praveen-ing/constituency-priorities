@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { ArrowLeft, Check } from "lucide-react";
+import QualityWarning from "./QualityWarning";
 
 interface Props {
   lang: string;
   onBack: () => void;
   onSubmitted: (id: string) => void;
+  userId?: string;
 }
 
 const ISSUES = [
@@ -28,22 +30,47 @@ const URGENCY_OPTIONS = [
 
 type Step = "issue" | "urgency" | "confirm";
 
-export default function LowLiteracyFlow({ lang, onBack, onSubmitted }: Props) {
+export default function LowLiteracyFlow({ lang, onBack, onSubmitted, userId }: Props) {
   const [step, setStep] = useState<Step>("issue");
   const [selectedIssue, setSelectedIssue] = useState<(typeof ISSUES)[number] | null>(null);
   const [selectedUrgency, setSelectedUrgency] = useState<(typeof URGENCY_OPTIONS)[number] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [qualityCheck, setQualityCheck] = useState<{score: number, suggestions: string[]} | null>(null);
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
   const label = (item: { en: string; hi: string; te: string }) =>
     lang === "hi" ? item.hi : lang === "te" ? item.te : item.en;
 
-  const submit = async () => {
+  const submit = async (skipQualityCheck = false) => {
     if (!selectedIssue || !selectedUrgency) return;
     setLoading(true);
     const text = `Icon submission: ${selectedIssue.en} issue, urgency: ${selectedUrgency.en}`;
+    
     try {
+      if (!skipQualityCheck && !qualityCheck) {
+        const checkRes = await fetch(`${apiBase}/submissions/quality-check`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            media_type: "text", 
+            content: text, 
+            original_language: lang === "hi" ? "hi-IN" : lang === "te" ? "te-IN" : "en-IN" 
+          }),
+        });
+        const qualityData = await checkRes.json();
+        
+        if (qualityData.score < 65) {
+          setQualityCheck(qualityData);
+          setLoading(false);
+          return;
+        }
+        setQualityCheck(qualityData);
+      }
+
+      const payloadScore = qualityCheck?.score ?? 100.0;
+      const payloadSuggestions = qualityCheck?.suggestions ?? [];
+
       const res = await fetch(`${apiBase}/submissions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -52,6 +79,9 @@ export default function LowLiteracyFlow({ lang, onBack, onSubmitted }: Props) {
           content: text,
           original_language: lang === "hi" ? "hi-IN" : lang === "te" ? "te-IN" : "en-IN",
           source: "web",
+          quality_score: payloadScore,
+          quality_suggestions: payloadSuggestions,
+          user_id: userId
         }),
       });
       const data = await res.json();
@@ -134,10 +164,22 @@ export default function LowLiteracyFlow({ lang, onBack, onSubmitted }: Props) {
               <div className="text-slate-400 mt-1">{selectedUrgency.emoji} {label(selectedUrgency)}</div>
             </div>
           </div>
-          <button
-            id="confirm-icon-submit"
-            onClick={submit}
-            disabled={loading}
+          
+          {qualityCheck && qualityCheck.score < 65 && (
+            <QualityWarning
+              score={qualityCheck.score}
+              suggestions={qualityCheck.suggestions}
+              lang={lang}
+              onProceed={() => submit(true)}
+              onImprove={() => { setStep("issue"); setQualityCheck(null); }}
+            />
+          )}
+          
+          {(!qualityCheck || qualityCheck.score >= 65) && (
+            <button
+              id="confirm-icon-submit"
+              onClick={() => submit(false)}
+              disabled={loading}
             className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-semibold text-white transition-all hover:scale-[1.02] disabled:opacity-40"
             style={{ background: "linear-gradient(135deg, #1e88ed, #1671da)" }}
           >
@@ -148,6 +190,7 @@ export default function LowLiteracyFlow({ lang, onBack, onSubmitted }: Props) {
             )}
             {lang === "hi" ? "जमा करें" : lang === "te" ? "సమర్పించు" : "Submit"}
           </button>
+          )}
         </>
       )}
     </div>

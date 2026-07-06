@@ -4,6 +4,8 @@ from typing import List, Dict, Any
 import google.generativeai as genai
 import os
 
+from app.config import get_settings
+
 router = APIRouter()
 
 class ChatRequest(BaseModel):
@@ -17,8 +19,9 @@ class ChatResponse(BaseModel):
 async def chat_with_data(request: ChatRequest):
     """Answers natural language questions about the provided dashboard data using Gemini Pro."""
     try:
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
+        settings = get_settings()
+        api_key = settings.gemini_api_key
+        if not api_key or api_key == "your_gemini_api_key":
             if request.context_data:
                 top = request.context_data[0]
                 fallback_msg = f"API Key not configured. [Mock Mode]: Based on the current data, the top priority is '{top.get('theme')}' in '{top.get('ward')}'. It has a high gap score of {top.get('gap_score')} derived from {top.get('submissions')} recent citizen submissions and baseline deficits."
